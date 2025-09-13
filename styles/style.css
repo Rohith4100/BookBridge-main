@@ -545,7 +545,7 @@ body {
     transform: translateY(0);
   }
 }
-/* Toast (unified styling) */
+
 #toast {
   visibility: hidden;
   min-width: 250px;
