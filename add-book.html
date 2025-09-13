@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>BookBridge • Add Book</title>
+  <link rel="stylesheet" href="styles/style.css" />
+  <style>
+    /* ✅ Hide notif badge if empty */
+    .notif-badge:empty {
+      display: none !important;
+    }
+  </style>
+</head>
+<body>
+  <header class="navbar">
+    <div class="brand">BookBridge</div>
+    <nav class="nav-buttons">
+      <a href="index.html" class="btn">Home</a>
+      <a href="catalog.html" class="btn">Catalog</a>
+      <a href="add-book.html" class="btn">Add Book</a>
+
+      <div class="notif-wrapper">
+        <a href="notifications.html" id="notificationsBtn" class="btn">Notifications</a>
+        <span id="notifBadge" class="notif-badge" style="display:none;"></span>
+      </div>
+
+      <a href="login.html" id="loginLink" class="btn btn-text">Login</a>
+      <a id="logoutBtn" class="btn btn-text hidden">Logout</a>
+    </nav>
+  </header>
+
+  <main class="container">
+    <section class="card">
+      <h2>List a Book</h2>
+
+      <form id="bookForm">
+        <div class="grid-2">
+          <label>Title <input type="text" id="title" required /></label>
+          <label>Author <input type="text" id="author" required /></label>
+        </div>
+        <div class="grid-3">
+          <label>Edition <input type="text" id="edition" placeholder="e.g., 3rd" /></label>
+          <label>Condition
+            <select id="condition">
+              <option>Like New</option>
+              <option>Good</option>
+              <option>Fair</option>
+            </select>
+          </label>
+          <label>Price (₹)
+            <input type="number" id="price" min="0" step="1" value="0" style="width: 100%;" />
+          </label>
+        </div>
+        <label class="checkbox">
+          <input type="checkbox" id="isFree" /> Free / Donation
+        </label>
+        <label>Description
+          <textarea id="description" rows="3" placeholder="Notes about highlights, missing pages, etc."></textarea>
+        </label>
+        <button class="btn" type="submit" id="publishBtn">Publish</button>
+      </form>
+      <p id="status" class="muted"></p>
+    </section>
+  </main>
+
+  <script type="module">
+    import { requireAuth } from './js/auth.js';
+    import { addBook } from './js/books.js';
+    import { qs, showToast } from './js/ui.js';
+    import { auth, onAuthStateChanged, db } from './js/firebase-init.js';
+    import { collection, query, where, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
+
+    const form = qs('#bookForm');
+    const status = qs('#status');
+    const loginLink = document.getElementById('loginLink');
+    const logoutBtn = document.getElementById('logoutBtn');
+    const notifBadge = document.getElementById('notifBadge');
+
+    const user = await requireAuth();
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      const payload = {
+        title: qs('#title').value.trim(),
+        author: qs('#author').value.trim(),
+        edition: qs('#edition').value.trim(),
+        condition: qs('#condition').value,
+        price: Number(qs('#price').value || 0),
+        isFree: qs('#isFree').checked,
+        description: qs('#description').value.trim(),
+      };
+
+      status.textContent = 'Saving...';
+      try {
+        await addBook(payload);
+        status.textContent = '✅ Book listed!';
+        form.reset();
+      } catch (err) {
+        status.textContent = '❌ ' + err.message;
+      }
+    });
+
+    onAuthStateChanged(auth, (user) => {
+      if (user) {
+        loginLink.classList.add('hidden');
+        logoutBtn.classList.remove('hidden');
+
+        logoutBtn.onclick = async () => {
+          const { signOut } = await import('./js/auth.js');
+          signOut();
+        };
+
+        const notifRef = collection(db, 'notifications', user.uid, 'items');
+        const unreadQuery = query(notifRef, where("read", "==", false));
+        onSnapshot(unreadQuery, (snap) => {
+          const count = snap.size;
+          if (count > 0) {
+            notifBadge.style.display = "inline-block";
+            notifBadge.textContent = count > 9 ? "9+" : count;
+          } else {
+            notifBadge.textContent = "";
+            notifBadge.style.display = "none";
+          }
+        });
+      } else {
+        loginLink.classList.remove('hidden');
+        logoutBtn.classList.add('hidden');
+        notifBadge.textContent = "";
+        notifBadge.style.display = "none";
+      }
+    });
+  </script>
+</body>
+</html>

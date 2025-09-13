@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Notifications</title>
+  <link rel="stylesheet" href="styles/style.css" />
+  <style>
+    /* Fixed navbar */
+    .navbar {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      z-index: 1000;
+      background: var(--card);
+      border-bottom: 1px solid var(--accent);
+      padding: 10px 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    body { padding-top: 70px; }
+
+    .container { max-width: 980px; margin: 0 auto; padding: 20px; }
+
+    .btn-row { display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+
+    /* Tabs */
+    .tabs { display: flex; gap: 12px; margin-bottom: 12px; }
+    .tab {
+      flex: 1; text-align: center; padding: 10px; cursor: pointer;
+      border-radius: 8px; background: var(--card); border: 1px solid var(--accent);
+      user-select: none;
+    }
+    .tab.active { background: var(--accent); color: #fff; font-weight: 600; }
+
+    .notif-section { display: none; }
+    .notif-section.active { display: block; }
+
+    .filter-row { display:flex; justify-content:flex-end; margin-bottom:12px; }
+    .filter-select { padding:4px 6px; font-size:0.85rem; border-radius:6px; border:1px solid #ccc; }
+
+    .card { margin-bottom:10px; padding:12px; border-radius:8px; background:var(--card); }
+    .notification-item { display:flex; flex-direction:column; gap:6px; }
+    .muted { color: #666; font-size:0.9rem; }
+    .see-more-row { display:flex; justify-content:center; margin-top:12px; }
+
+    /* 🔔 Notification badge */
+    .notif-badge {
+      position: absolute;
+      top: -6px;
+      right: -6px;
+      background: red;
+      color: white;
+      font-size: 0.7rem;
+      font-weight: bold;
+      border-radius: 50%;
+      padding: 3px 6px;
+      display: none;
+      transition: transform 0.2s ease;
+    }
+    .notif-badge.bump { animation: bump 0.4s ease; }
+    @keyframes bump {
+      0%   { transform: scale(1); }
+      30%  { transform: scale(1.3); }
+      60%  { transform: scale(0.9); }
+      100% { transform: scale(1); }
+    }
+    .notif-wrapper { position: relative; display: inline-block; }
+    .notif-badge:empty { display: none !important; }
+  </style>
+</head>
+<body>
+  <!-- Navbar -->
+  <header class="navbar">
+    <div class="brand">BookBridge</div>
+    <nav class="nav-buttons">
+      <a href="index.html" class="btn">Home</a>
+      <a href="add-book.html" class="btn">Add Book</a>
+      <a href="catalog.html" class="btn">Catalog</a>
+
+      <div class="notif-wrapper">
+        <a href="notifications.html" id="notificationsBtn" class="btn">Notifications</a>
+        <span id="notifBadge" class="notif-badge"></span>
+      </div>
+
+      <a href="login.html" id="loginLink" class="btn btn-text">Login</a>
+      <button id="logoutBtn" class="btn btn-text hidden">Logout</button>
+    </nav>
+  </header>
+
+  <main class="container">
+    <h2>Notifications</h2>
+
+    <div class="btn-row">
+      <button id="clearBtn" class="btn btn-outline">Clear</button>
+    </div>
+
+    <div class="tabs">
+      <div class="tab active" data-target="#myRequestsSection">Requests I Made</div>
+      <div class="tab" data-target="#publisherRequestsSection">Requests For My Books</div>
+    </div>
+
+    <!-- Requests I Made -->
+    <div id="myRequestsSection" class="notif-section active">
+      <div class="filter-row">
+        <select id="myRequestsFilter" class="filter-select">
+          <option value="all">All</option>
+          <option value="pending">Pending</option>
+          <option value="accepted">Accepted</option>
+          <option value="rejected">Rejected</option>
+        </select>
+      </div>
+      <div id="myRequestsBox" class="list-area">Loading...</div>
+      <div class="see-more-row"><button id="seeMoreMyRequests" class="btn btn-outline">See More</button></div>
+    </div>
+
+    <!-- Requests For My Books -->
+    <div id="publisherRequestsSection" class="notif-section">
+      <div class="filter-row">
+        <select id="publisherRequestsFilter" class="filter-select">
+          <option value="all">All</option>
+          <option value="pending">Pending</option>
+          <option value="accepted">Accepted</option>
+          <option value="rejected">Rejected</option>
+        </select>
+      </div>
+      <div id="publisherRequestsBox" class="list-area">Loading...</div>
+      <div class="see-more-row"><button id="seeMorePublisherRequests" class="btn btn-outline">See More</button></div>
+    </div>
+  </main>
+
+  <div id="toast"></div>
+
+  <script type="module">
+    import { auth, onAuthStateChanged, db } from './js/firebase-init.js';
+    import { requireAuth, signOut } from './js/auth.js';
+    import { updateRequestStatus } from './js/notifications.js';
+    import { showToast } from './js/ui.js';
+    import {
+      collection,
+      collectionGroup,
+      query,
+      where,
+      getDocs,
+      onSnapshot,
+      deleteDoc,
+      getDocs as getDocsOnce
+    } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
+
+    // DOM
+    const myRequestsBox = document.getElementById('myRequestsBox');
+    const publisherRequestsBox = document.getElementById('publisherRequestsBox');
+    const clearBtn = document.getElementById('clearBtn');
+    const myRequestsFilter = document.getElementById("myRequestsFilter");
+    const publisherRequestsFilter = document.getElementById("publisherRequestsFilter");
+    const seeMoreMyRequests = document.getElementById("seeMoreMyRequests");
+    const seeMorePublisherRequests = document.getElementById("seeMorePublisherRequests");
+    const loginLink = document.getElementById('loginLink');
+    const logoutBtn = document.getElementById('logoutBtn');
+    const notifBadge = document.getElementById('notifBadge');
+
+    // State
+    let myLimit = 10;
+    let publisherLimit = 10;
+
+    const myRequestsMap = new Map();
+    const publisherRequestsMap = new Map();
+    const myBookUnsubs = new Map();
+    const publisherBookUnsubs = new Map();
+
+    const tsToMillis = (ts) => (ts?.toDate ? ts.toDate().getTime() : (typeof ts === 'number' ? ts : 0));
+    function createCard(content) {
+      const card = document.createElement('div');
+      card.className = 'card notification-item';
+      card.innerHTML = content;
+      return card;
+    }
+
+    // Navbar auth + badge
+    onAuthStateChanged(auth, (user) => {
+      if (user) {
+        loginLink.classList.add('hidden');
+        logoutBtn.classList.remove('hidden');
+
+        logoutBtn.onclick = async () => { await signOut(); };
+
+        // live unread count
+        const notifRef = collection(db, 'notifications', user.uid, 'items');
+        const unreadQuery = query(notifRef, where("read", "==", false));
+        onSnapshot(unreadQuery, (snap) => {
+          const count = snap.size;
+          if (count > 0) {
+            notifBadge.style.display = "inline-block";
+            notifBadge.textContent = count > 9 ? "9+" : count;
+            notifBadge.classList.remove("bump");
+            void notifBadge.offsetWidth;
+            notifBadge.classList.add("bump");
+          } else {
+            notifBadge.textContent = "";
+            notifBadge.style.display = "none";
+          }
+        });
+      } else {
+        loginLink.classList.remove('hidden');
+        logoutBtn.classList.add('hidden');
+        notifBadge.textContent = "";
+        notifBadge.style.display = "none";
+      }
+    });
+
+    // Tabs
+    const tabs = document.querySelectorAll('.tab');
+    const sections = document.querySelectorAll('.notif-section');
+    tabs.forEach(tab => tab.addEventListener('click', () => {
+      tabs.forEach(t => t.classList.remove('active'));
+      sections.forEach(s => s.classList.remove('active'));
+      tab.classList.add('active');
+      document.querySelector(tab.dataset.target).classList.add('active');
+    }));
+
+    // Render My Requests
+    function renderMyRequests() {
+      const arr = Array.from(myRequestsMap.values()).sort((a,b) => tsToMillis(b.requestedAt) - tsToMillis(a.requestedAt));
+      const filter = myRequestsFilter.value;
+      myRequestsBox.innerHTML = '';
+      let shown = 0;
+      for (const it of arr) {
+        if (filter !== 'all' && it.status !== filter) continue;
+        if (shown >= myLimit) break;
+        const card = createCard(`
+          <strong>${escapeHtml(it.bookTitle)}</strong>
+          <div>Publisher: ${escapeHtml(it.publisherEmail || 'Unknown')}</div>
+          <div>Status: ${escapeHtml(it.status)}</div>
+          <div class="muted">${it.requestedAt?.toDate ? it.requestedAt.toDate().toLocaleString() : ''}</div>
+        `);
+        myRequestsBox.appendChild(card);
+        shown++;
+      }
+      if (!myRequestsBox.hasChildNodes()) myRequestsBox.textContent = "You haven’t requested any books yet.";
+      seeMoreMyRequests.style.display = arr.filter(i => filter === 'all' || i.status === filter).length > myLimit ? 'block' : 'none';
+    }
+
+    // Render Publisher Requests
+    function renderPublisherRequests(currentUser) {
+      const arr = Array.from(publisherRequestsMap.values()).sort((a,b) => tsToMillis(b.requestedAt) - tsToMillis(a.requestedAt));
+      const filter = publisherRequestsFilter.value;
+      publisherRequestsBox.innerHTML = '';
+      let shown = 0;
+      for (const it of arr) {
+        if (filter !== 'all' && it.status !== filter) continue;
+        if (shown >= publisherLimit) break;
+
+        const card = createCard(`
+          <strong>${escapeHtml(it.bookTitle)}</strong>
+          <div>Requested by: ${escapeHtml(it.requesterName || it.requesterUid || 'Unknown')}</div>
+          <div>Status: ${escapeHtml(it.status)}</div>
+          <div class="muted">${it.requestedAt?.toDate ? it.requestedAt.toDate().toLocaleString() : ''}</div>
+        `);
+
+        if (it.status === 'pending') {
+          const acceptBtn = document.createElement('button'); acceptBtn.className = 'btn btn-success'; acceptBtn.textContent = 'Accept';
+          const rejectBtn = document.createElement('button'); rejectBtn.className = 'btn btn-danger'; rejectBtn.textContent = 'Reject';
+
+          acceptBtn.onclick = async () => {
+            acceptBtn.disabled = rejectBtn.disabled = true;
+            try {
+              await updateRequestStatus(it.bookId, it.id, 'accepted', currentUser.email, it.requesterUid, it.bookTitle);
+              showToast('✅ Request accepted','success');
+            } catch (e) {
+              showToast('Failed: ' + (e.message || e),'error');
+              acceptBtn.disabled = rejectBtn.disabled = false;
+            }
+          };
+
+          rejectBtn.onclick = async () => {
+            acceptBtn.disabled = rejectBtn.disabled = true;
+            try {
+              await updateRequestStatus(it.bookId, it.id, 'rejected', currentUser.email, it.requesterUid, it.bookTitle);
+              showToast('❌ Request rejected','success');
+            } catch (e) {
+              showToast('Failed: ' + (e.message || e),'error');
+              acceptBtn.disabled = rejectBtn.disabled = false;
+            }
+          };
+
+          card.appendChild(acceptBtn);
+          card.appendChild(rejectBtn);
+        }
+
+        publisherRequestsBox.appendChild(card);
+        shown++;
+      }
+      if (!publisherRequestsBox.hasChildNodes()) publisherRequestsBox.textContent = 'No requests found.';
+      seeMorePublisherRequests.style.display = arr.filter(i => filter === 'all' || i.status === filter).length > publisherLimit ? 'block' : 'none';
+    }
+
+    // Escape HTML
+    function escapeHtml(str = '') {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+
+    // Listen to my requests
+    async function listenToMyRequests(currentUser) {
+      myRequestsMap.clear();
+      for (const unsub of myBookUnsubs.values()) try { unsub(); } catch {}
+      myBookUnsubs.clear();
+
+      const booksRef = collection(db, 'books');
+      onSnapshot(booksRef, (booksSnap) => {
+        const seenBookIds = new Set();
+        booksSnap.forEach(bookDoc => {
+          const bookId = bookDoc.id;
+          seenBookIds.add(bookId);
+          if (!myBookUnsubs.has(bookId)) {
+            const requestsRef = collection(db, 'books', bookId, 'requests');
+            const unsub = onSnapshot(requestsRef, (reqSnap) => {
+              for (const key of Array.from(myRequestsMap.keys())) {
+                if (key.startsWith(bookId + ':')) myRequestsMap.delete(key);
+              }
+              reqSnap.forEach(r => {
+                const rd = r.data();
+                if (rd.requesterUid === currentUser.uid) {
+                  const key = `${bookId}:${r.id}`;
+                  myRequestsMap.set(key, {
+                    id: r.id,
+                    bookId,
+                    bookTitle: bookDoc.data().title || '(Untitled)',
+                    publisherEmail: bookDoc.data().ownerEmail || bookDoc.data().ownerName || '',
+                    status: rd.status || 'pending',
+                    requestedAt: rd.requestedAt
+                  });
+                }
+              });
+              renderMyRequests();
+            });
+            myBookUnsubs.set(bookId, unsub);
+          }
+        });
+        for (const existingId of Array.from(myBookUnsubs.keys())) {
+          if (!seenBookIds.has(existingId)) {
+            const unsub = myBookUnsubs.get(existingId);
+            try { unsub(); } catch {}
+            myBookUnsubs.delete(existingId);
+            for (const key of Array.from(myRequestsMap.keys())) if (key.startsWith(existingId + ':')) myRequestsMap.delete(key);
+            renderMyRequests();
+          }
+        }
+      });
+
+      myRequestsFilter.addEventListener('change', () => { myLimit = 10; renderMyRequests(); });
+      seeMoreMyRequests.addEventListener('click', () => { myLimit += 10; renderMyRequests(); });
+    }
+
+    // Listen to publisher requests
+    async function listenToPublisherRequests(currentUser) {
+      publisherRequestsMap.clear();
+      for (const unsub of publisherBookUnsubs.values()) try { unsub(); } catch {}
+      publisherBookUnsubs.clear();
+
+      const myBooksQuery = query(collection(db, 'books'), where('ownerUid', '==', currentUser.uid));
+      onSnapshot(myBooksQuery, (snap) => {
+        const seen = new Set();
+        snap.forEach(bookDoc => {
+          const bookId = bookDoc.id;
+          const bookData = bookDoc.data();
+          seen.add(bookId);
+
+          if (!publisherBookUnsubs.has(bookId)) {
+            const requestsRef = collection(db, 'books', bookId, 'requests');
+            const unsub = onSnapshot(requestsRef, (reqSnap) => {
+              for (const k of Array.from(publisherRequestsMap.keys())) { if (k.startsWith(bookId + ':')) publisherRequestsMap.delete(k); }
+              reqSnap.forEach(r => {
+                const rd = r.data();
+                publisherRequestsMap.set(`${bookId}:${r.id}`, {
+                  id: r.id,
+                  bookId,
+                  bookTitle: bookData.title || '(Untitled)',
+                  status: rd.status || 'pending',
+                  requestedAt: rd.requestedAt,
+                  requesterName: rd.requesterName,
+                  requesterUid: rd.requesterUid
+                });
+              });
+              renderPublisherRequests(currentUser);
+            });
+            publisherBookUnsubs.set(bookId, unsub);
+          }
+        });
+        for (const existingId of Array.from(publisherBookUnsubs.keys())) {
+          if (!seen.has(existingId)) {
+            const unsub = publisherBookUnsubs.get(existingId);
+            try { unsub(); } catch {}
+            publisherBookUnsubs.delete(existingId);
+            for (const k of Array.from(publisherRequestsMap.keys())) if (k.startsWith(existingId + ':')) publisherRequestsMap.delete(k);
+            renderPublisherRequests(currentUser);
+          }
+        }
+      });
+
+      publisherRequestsFilter.addEventListener('change', () => { publisherLimit = 10; renderPublisherRequests(currentUser); });
+      seeMorePublisherRequests.addEventListener('click', () => { publisherLimit += 10; renderPublisherRequests(currentUser); });
+    }
+
+    // Clear requests
+    async function clearRequestsIHaveMade(user) {
+      try {
+        const cg = collectionGroup(db, 'requests');
+        const q = query(cg, where('requesterUid', '==', user.uid));
+        const snap = await getDocs(q);
+        if (snap.empty) return;
+        await Promise.all(snap.docs.map(d => deleteDoc(d.ref)));
+      } catch (e) {
+        const booksRef = collection(db, 'books');
+        const booksSnap = await getDocsOnce(booksRef);
+        const deletions = [];
+        for (const bookDoc of booksSnap.docs) {
+          const reqRef = collection(db, 'books', bookDoc.id, 'requests');
+          const reqSnap = await getDocsOnce(reqRef);
+          for (const r of reqSnap.docs) {
+            const rd = r.data();
+            if (rd.requesterUid === user.uid) deletions.push(deleteDoc(r.ref));
+          }
+        }
+        if (deletions.length) await Promise.all(deletions);
+      }
+    }
+
+    async function clearRequestsForMyBooks(user) {
+      const myBooksQ = query(collection(db, 'books'), where('ownerUid', '==', user.uid));
+      const myBooksSnap = await getDocsOnce(myBooksQ);
+      const deletions = [];
+      for (const bookDoc of myBooksSnap.docs) {
+        const reqRef = collection(db, 'books', bookDoc.id, 'requests');
+        const reqSnap = await getDocsOnce(reqRef);
+        for (const r of reqSnap.docs) deletions.push(deleteDoc(r.ref));
+      }
+      if (deletions.length) await Promise.all(deletions);
+    }
+
+    // Clear button
+    clearBtn.onclick = async () => {
+      let user;
+      try {
+        user = await requireAuth();
+      } catch (e) {
+        showToast('Login required to clear', 'error');
+        return;
+      }
+
+      const active = document.querySelector('.tab.active')?.dataset?.target || '#myRequestsSection';
+
+      if (active === '#myRequestsSection') {
+        if (!confirm('Clear all requests you made? This will delete those request documents.')) return;
+        try {
+          await clearRequestsIHaveMade(user);
+          myRequestsMap.clear();
+          renderMyRequests();
+          showToast('✅ Cleared requests you made', 'success');
+        } catch (e) {
+          console.error(e);
+          showToast('Failed to clear: ' + (e.message || e), 'error');
+        }
+      } else if (active === '#publisherRequestsSection') {
+        if (!confirm('Clear all requests for your books?')) return;
+        try {
+          await clearRequestsForMyBooks(user);
+          publisherRequestsMap.clear();
+          renderPublisherRequests(user);
+          showToast('✅ Cleared requests for your books', 'success');
+        } catch (e) {
+          console.error(e);
+          showToast('Failed to clear: ' + (e.message || e), 'error');
+        }
+      }
+    };
+
+    // Boot
+    document.addEventListener('DOMContentLoaded', async () => {
+      let user;
+      try { user = await requireAuth(); } catch { user = null; }
+
+      if (!user) {
+        myRequestsBox.textContent = 'Please log in to view requests you made.';
+        publisherRequestsBox.textContent = 'Please log in to view requests for your books.';
+        return;
+      }
+      listenToMyRequests(user);
+      listenToPublisherRequests(user);
+    });
+  </script>
+</body>
+</html>

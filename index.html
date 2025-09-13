@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>BookBridge • Home</title>
+  <link rel="stylesheet" href="styles/style.css" />
+
+  <style>
+    .notif-badge {
+      position: absolute;
+      top: -6px;
+      right: -6px;
+      background: red;
+      color: white;
+      font-size: 0.7rem;
+      font-weight: bold;
+      border-radius: 50%;
+      padding: 3px 6px;
+      display: none;
+      transition: transform 0.2s ease;
+    }
+
+    .notif-badge.bump {
+      animation: bump 0.4s ease;
+    }
+
+    @keyframes bump {
+      0%   { transform: scale(1); }
+      30%  { transform: scale(1.3); }
+      60%  { transform: scale(0.9); }
+      100% { transform: scale(1); }
+    }
+
+    .notif-wrapper {
+      position: relative;
+      display: inline-block;
+    }
+
+    /* ✅ Hide badge when empty to prevent "0" flicker */
+    .notif-badge:empty {
+      display: none !important;
+    }
+  </style>
+</head>
+<body>
+  <header class="navbar">
+    <div class="brand">BookBridge</div>
+    <nav class="nav-buttons">
+      <a href="catalog.html" class="btn">Catalog</a>
+      <a href="add-book.html" class="btn">Add Book</a>
+
+      <div class="notif-wrapper">
+        <a href="notifications.html" id="notificationsBtn" class="btn">Notifications</a>
+        <span id="notifBadge" class="notif-badge" style="display:none;"></span>
+      </div>
+
+      <a href="login.html" id="loginLink" class="btn btn-text">Login</a>
+      <a id="logoutBtn" class="btn btn-text hidden">Logout</a>
+    </nav>
+  </header>
+
+  <main class="container">
+    <section class="hero">
+      <h1>Peer-to-Peer Book Exchange</h1>
+      <p>List, find, lend, donate, or sell books within your campus community.</p>
+      <div class="cta">
+        <a class="btn" href="catalog.html">Browse Catalog</a>
+        <a class="btn btn-outline" href="add-book.html">List a Book</a>
+      </div>
+    </section>
+  </main>
+
+  <script type="module">
+    import { auth, onAuthStateChanged, db } from './js/firebase-init.js';
+    import {
+      collection,
+      onSnapshot,
+      query,
+      where
+    } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
+
+    const loginLink = document.getElementById('loginLink');
+    const logoutBtn = document.getElementById('logoutBtn');
+    const notifBadge = document.getElementById('notifBadge');
+
+    onAuthStateChanged(auth, (user) => {
+      if (user) {
+        loginLink.classList.add('hidden');
+        logoutBtn.classList.remove('hidden');
+
+        logoutBtn.onclick = async () => {
+          const { signOut } = await import('./js/auth.js');
+          signOut();
+        };
+
+        // ✅ Only count UNREAD notifications
+        const notifRef = collection(db, 'notifications', user.uid, 'items');
+        const unreadQuery = query(notifRef, where("read", "==", false));
+
+        onSnapshot(unreadQuery, (snap) => {
+          const count = snap.size;
+          if (count > 0) {
+            notifBadge.style.display = "inline-block";
+            notifBadge.textContent = count > 9 ? "9+" : count;
+
+            notifBadge.classList.remove("bump");
+            void notifBadge.offsetWidth; // restart animation
+            notifBadge.classList.add("bump");
+          } else {
+            notifBadge.textContent = "";
+            notifBadge.style.display = "none";
+          }
+        });
+
+      } else {
+        loginLink.classList.remove('hidden');
+        logoutBtn.classList.add('hidden');
+        notifBadge.textContent = "";
+        notifBadge.style.display = "none";
+      }
+    });
+  </script>
+</body>
+</html>

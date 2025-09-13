@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>BookBridge • Catalog</title>
+  <link rel="stylesheet" href="styles/style.css" />
+  <style>
+    /* Navbar fixed */
+    .navbar {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      z-index: 1000;
+      background: var(--card);
+      border-bottom: 1px solid var(--accent);
+      padding: 10px 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    body {
+      padding-top: 70px; /* so content doesn't go under navbar */
+    }
+
+    /* Tabs */
+    .tabs {
+      display: flex;
+      gap: 12px;
+      margin: 12px 0;
+    }
+    .tab {
+      flex: 1;
+      text-align: center;
+      padding: 10px;
+      cursor: pointer;
+      border-radius: 8px;
+      background: var(--card);
+      border: 1px solid var(--accent);
+    }
+    .tab.active {
+      background: var(--accent);
+      color: #fff;
+      font-weight: 600;
+    }
+    .catalog-section { display: none; }
+    .catalog-section.active { display: block; }
+  </style>
+</head>
+<body>
+  <header class="navbar">
+    <div class="brand">BookBridge</div>
+    <nav class="nav-buttons">
+      <a href="index.html" class="btn">Home</a>
+      <a href="add-book.html" class="btn">Add Book</a>
+      <a href="catalog.html" class="btn">Catalog</a>
+      <a href="notifications.html" class="btn">Notifications</a>
+      <a href="login.html" id="loginLink" class="btn btn-text">Login</a>
+      <button id="logoutBtn" class="btn btn-text hidden">Logout</button>
+    </nav>
+  </header>
+
+  <main class="container">
+    <section class="card">
+      <div class="flex-between" style="align-items:center; gap:12px;">
+        <h2>Catalog</h2>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <input id="search" class="input" type="search" placeholder="Search by title or author" />
+          <select id="viewFilter" class="input">
+            <option value="all">All</option>
+            <option value="available">Available only</option>
+            <option value="mine">Mine only</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- ✅ Tab buttons -->
+      <div class="tabs">
+        <div class="tab active" data-target="#availableSection">Available Books</div>
+        <div class="tab" data-target="#mySection">My Books</div>
+      </div>
+
+      <!-- ✅ Sections -->
+      <div id="availableSection" class="catalog-section active">
+        <div id="availableBooks" class="cards-grid">Loading...</div>
+      </div>
+
+      <div id="mySection" class="catalog-section">
+        <div id="myBooks" class="cards-grid">Loading...</div>
+      </div>
+
+      <p id="status" class="muted"></p>
+    </section>
+  </main>
+
+  <div id="toast"></div>
+
+  <script type="module">
+    import { auth, onAuthStateChanged } from './js/firebase-init.js';
+    import { qs, el, showToast, showModal } from './js/ui.js';
+    import { getBooks, requestBook, deleteBook, getRequestForUser } from './js/books.js';
+    import { signOut } from './js/auth.js';
+
+    const availableBox = qs('#availableBooks');
+    const myBox = qs('#myBooks');
+    const status = qs('#status');
+    const search = qs('#search');
+    const viewFilter = qs('#viewFilter');
+    const loginLink = qs('#loginLink');
+    const logoutBtn = qs('#logoutBtn');
+
+    // ✅ Tabs logic
+    const tabs = document.querySelectorAll('.tab');
+    const sections = document.querySelectorAll('.catalog-section');
+    tabs.forEach(tab => {
+      tab.addEventListener('click', () => {
+        tabs.forEach(t => t.classList.remove('active'));
+        sections.forEach(s => s.classList.remove('active'));
+        tab.classList.add('active');
+        document.querySelector(tab.dataset.target).classList.add('active');
+      });
+    });
+
+    // show/hide login/logout in header based on auth
+    onAuthStateChanged(auth, (user) => {
+      if (user) {
+        loginLink.classList.add('hidden');
+        logoutBtn.classList.remove('hidden');
+      } else {
+        loginLink.classList.remove('hidden');
+        logoutBtn.classList.add('hidden');
+      }
+      load();
+    });
+
+    logoutBtn?.addEventListener('click', async () => {
+      try {
+        await signOut();
+        showToast('Logged out', 'success');
+        load();
+      } catch (e) {
+        showToast(e.message || 'Logout failed', 'error');
+      }
+    });
+
+    let allBooks = [];
+
+    async function load() {
+      status.textContent = 'Loading books...';
+      availableBox.innerHTML = 'Loading...';
+      myBox.innerHTML = 'Loading...';
+      try {
+        allBooks = await getBooks();
+        renderAll();
+        status.textContent = '';
+      } catch (e) {
+        status.textContent = '❌ ' + (e.message || e);
+        availableBox.innerHTML = '';
+        myBox.innerHTML = '';
+      }
+    }
+
+    function formatPrice(b) {
+      if (b.isFree) return 'Free';
+      if (b.price || b.price === 0) return `₹ ${b.price}`;
+      return '—';
+    }
+
+    async function renderAll() {
+      const user = auth.currentUser;
+      const q = (search.value || '').toLowerCase();
+      const view = viewFilter.value;
+
+      const myBooks = allBooks.filter(b => user && b.ownerUid === user.uid);
+      const availableBooks = allBooks.filter(b => (b.available !== false) && (!user || b.ownerUid !== user.uid));
+
+      const filterFn = (b) => !q || (b.title || '').toLowerCase().includes(q) || (b.author || '').toLowerCase().includes(q);
+
+      // render available
+      availableBox.innerHTML = '';
+      const toShowAvail = availableBooks.filter(filterFn);
+      if (toShowAvail.length === 0) availableBox.textContent = 'No available books found.';
+      else {
+        for (const b of toShowAvail) {
+          const card = el('div', { class: 'card book-card' });
+          card.innerHTML = `
+            <h3>${b.title}</h3>
+            <p><strong>Author:</strong> ${b.author || 'Unknown'}</p>
+            <p><strong>Price:</strong> ${formatPrice(b)}</p>
+            <p class="muted">${b.edition || '—'} • ${b.condition || '—'}</p>
+            <p style="min-height:40px;">${b.description || ''}</p>
+            <div class="flex-right" style="gap:8px; margin-top:8px;">
+              <button class="btn btn-outline request-btn" data-id="${b.id}">Request</button>
+            </div>
+          `;
+          availableBox.appendChild(card);
+
+          const reqBtn = card.querySelector('.request-btn');
+          if (!auth.currentUser) {
+            reqBtn.textContent = 'Login to request';
+            reqBtn.onclick = () => location.href = 'login.html?next=catalog.html';
+            continue;
+          }
+
+          (async () => {
+            try {
+              const r = await getRequestForUser(b.id, auth.currentUser.uid);
+              if (r) {
+                if (r.status === 'pending') { reqBtn.textContent = 'Requested • Pending'; reqBtn.disabled = true; }
+                else if (r.status === 'accepted') { reqBtn.textContent = 'Accepted'; reqBtn.disabled = true; }
+                else if (r.status === 'rejected') { reqBtn.textContent = 'Request (rejected)'; reqBtn.disabled = false; }
+              }
+            } catch (e) { console.error(e); }
+          })();
+
+          reqBtn.addEventListener('click', async () => {
+            reqBtn.disabled = true;
+            try {
+              await requestBook(b.id);
+              reqBtn.textContent = 'Requested • Pending';
+              showToast('Request sent', 'success');
+            } catch (err) {
+              showToast(err.message || 'Could not send request', 'error');
+              reqBtn.disabled = false;
+            }
+          });
+        }
+      }
+
+      // render my books
+      myBox.innerHTML = '';
+      const toShowMine = myBooks.filter(filterFn);
+      if (toShowMine.length === 0) myBox.textContent = 'You have not listed any books yet.';
+      else {
+        for (const b of toShowMine) {
+          const card = el('div', { class: 'card book-card' });
+          card.innerHTML = `
+            <h3>${b.title}</h3>
+            <p><strong>Author:</strong> ${b.author || 'Unknown'}</p>
+            <p><strong>Price:</strong> ${formatPrice(b)}</p>
+            <p class="muted">${b.edition || '—'} • ${b.condition || '—'}</p>
+            <p style="min-height:40px;">${b.description || ''}</p>
+            <div class="flex-right" style="gap:8px; margin-top:8px;">
+              <button class="btn btn-danger delete-btn" data-id="${b.id}">Delete</button>
+            </div>
+          `;
+          myBox.appendChild(card);
+
+          const delBtn = card.querySelector('.delete-btn');
+          delBtn.addEventListener('click', () => {
+            showModal({
+              title: 'Delete book',
+              message: `Delete "${b.title}"?`,
+              actions: [
+                { label: 'Cancel', class: 'btn-outline' },
+                { label: 'Delete', class: 'btn-danger', onClick: async () => {
+                    delBtn.disabled = true;
+                    try {
+                      await deleteBook(b.id);
+                      showToast('Book deleted', 'success');
+                      await load();
+                    } catch (e) {
+                      showToast(e.message || 'Delete failed', 'error');
+                      delBtn.disabled = false;
+                    }
+                  } }
+              ]
+            });
+          });
+        }
+      }
+
+      if (view === 'available') {
+        document.querySelector('[data-target="#availableSection"]').click();
+      } else if (view === 'mine') {
+        document.querySelector('[data-target="#mySection"]').click();
+      }
+    }
+
+    search.addEventListener('input', renderAll);
+    viewFilter.addEventListener('change', renderAll);
+  </script>
+</body>
+</html>

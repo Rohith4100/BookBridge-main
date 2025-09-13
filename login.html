@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>BookBridge • Login</title>
+  <link rel="stylesheet" href="styles/style.css" />
+
+  <style>
+    .tabs {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    .tab {
+      flex: 1;
+      text-align: center;
+      padding: 10px;
+      cursor: pointer;
+      border-radius: 8px;
+      background: var(--card);
+    }
+    .tab.active {
+      background: var(--accent);
+      color: #fff;
+      font-weight: 600;
+    }
+    .auth-form { display: none; }
+    .auth-form.active { display: block; }
+
+    #toast {
+      transition: opacity 0.3s;
+      opacity: 0;
+      margin-top: 10px;
+      text-align: center;
+    }
+    .toast.ok { color: var(--accent-2); }
+    .toast.info { color: var(--accent); }
+    .toast.error { color: red; }
+
+    #errorBox {
+      color: red;
+      margin: 10px 0;
+      display: none;
+    }
+
+    /* 🔔 Notification badge (same as other pages) */
+    .notif-badge {
+      position: absolute;
+      top: -6px;
+      right: -6px;
+      background: red;
+      color: white;
+      font-size: 0.7rem;
+      font-weight: bold;
+      border-radius: 50%;
+      padding: 3px 6px;
+      display: none;
+      transition: transform 0.2s ease;
+    }
+    .notif-badge.bump { animation: bump 0.4s ease; }
+    @keyframes bump {
+      0% { transform: scale(1); }
+      30% { transform: scale(1.3); }
+      60% { transform: scale(0.9); }
+      100% { transform: scale(1); }
+    }
+    .notif-wrapper { position: relative; display: inline-block; }
+    .notif-badge:empty { display: none !important; }
+  </style>
+</head>
+
+<body>
+  <!-- ✅ Unified Navbar -->
+  <header class="navbar">
+    <div class="brand">BookBridge</div>
+    <nav class="nav-buttons">
+      <a href="index.html" class="btn">Home</a>
+      <a href="catalog.html" class="btn">Catalog</a>
+      <a href="add-book.html" class="btn">Add Book</a>
+
+      <div class="notif-wrapper">
+        <a href="notifications.html" id="notificationsBtn" class="btn">Notifications</a>
+        <span id="notifBadge" class="notif-badge"></span>
+      </div>
+
+      <a href="login.html" id="loginLink" class="btn btn-text">Login</a>
+      <button id="logoutBtn" class="btn btn-text hidden">Logout</button>
+    </nav>
+  </header>
+
+  <main class="container">
+    <section class="card">
+      <h2>Account</h2>
+
+      <div class="tabs">
+        <div class="tab active" data-target="#loginForm">Login</div>
+        <div class="tab" data-target="#signupForm">Sign Up</div>
+      </div>
+
+      <!-- Login Form -->
+      <form id="loginForm" class="auth-form active">
+        <label>Email <input type="email" id="loginEmail" required /></label>
+        <label>Password <input type="password" id="loginPassword" required /></label>
+        <button class="btn-full" type="submit">Login</button>
+        <p><a href="#" id="resetLink">Forgot password?</a></p>
+      </form>
+
+      <!-- Signup Form -->
+      <form id="signupForm" class="auth-form">
+        <label>Name <input type="text" id="signupName" required /></label>
+        <label>Email <input type="email" id="signupEmail" required /></label>
+        <label>Password <input type="password" id="signupPassword" required /></label>
+        <button class="btn-full" type="submit">Create Account</button>
+      </form>
+
+      <!-- Reset -->
+      <div id="resetRow" class="hidden">
+        <label>Email for reset <input type="email" id="resetEmail" /></label>
+        <button class="btn-full" id="resetBtn">Send Reset Link</button>
+      </div>
+
+      <button class="btn-full" id="googleBtn">Sign in with Google</button>
+
+      <div id="errorBox"></div>
+      <div id="toast" class="toast"></div>
+      <p id="userBox" class="muted"></p>
+    </section>
+  </main>
+
+  <!-- Tab/Reset Switching -->
+  <script>
+    const tabs = document.querySelectorAll(".tab");
+    const forms = document.querySelectorAll(".auth-form");
+    const resetRow = document.getElementById("resetRow");
+    const resetLink = document.getElementById("resetLink");
+
+    tabs.forEach(tab => {
+      tab.addEventListener("click", () => {
+        resetRow.classList.add("hidden");
+        tabs.forEach(t => t.classList.remove("active"));
+        forms.forEach(f => f.classList.remove("active"));
+        tab.classList.add("active");
+        document.querySelector(tab.dataset.target).classList.add("active");
+      });
+    });
+
+    resetLink.addEventListener("click", (e) => {
+      e.preventDefault();
+      forms.forEach(f => f.classList.remove("active"));
+      tabs.forEach(t => t.classList.remove("active"));
+      resetRow.classList.remove("hidden");
+    });
+  </script>
+
+  <!-- Login JS -->
+  <script type="module" src="js/login-page.js"></script>
+</body>
+</html>
