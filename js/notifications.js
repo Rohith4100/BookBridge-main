@@ -22,7 +22,8 @@ export async function updateRequestStatus(
   newStatus,
   publisherEmail,
   requesterUid,
-  bookTitle
+  bookTitle,
+  ownerPhone
 ) {
   const requestRef = doc(db, "books", bookId, "requests", requestId);
   await updateDoc(requestRef, { status: newStatus });
@@ -39,11 +40,20 @@ export async function updateRequestStatus(
   }
 
   const notifRef = collection(db, "notifications", requesterUid, "items");
+  
+  // MODIFIED BLOCK START: Construct clear message with both email and phone
+  let contactDetails = `Contact: ${publisherEmail}`;
+  if (ownerPhone) {
+      contactDetails += ` / Phone: ${ownerPhone}`; 
+  }
+
   const message =
     newStatus === "accepted"
-      ? `Your request for "${bookTitle}" has been accepted by ${publisherEmail}. Contact: ${publisherEmail}`
+      // UPDATED MESSAGE: Include the constructed contactDetails string directly.
+      ? `Your request for "${bookTitle}" has been accepted! You can contact the publisher to arrange the exchange. ${contactDetails}`
       : `Your request for "${bookTitle}" has been rejected by the publisher`;
-
+  // MODIFIED BLOCK END
+  
   await addDoc(notifRef, {
     message,
     status: newStatus,

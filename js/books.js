@@ -19,7 +19,8 @@ const BOOKS = 'books';
 /**
  * Add a new book (owner must be logged in)
  */
-export async function addBook({ title, author, edition, condition, price, isFree, description }) {
+// MODIFIED: Added ownerPhone argument
+export async function addBook({ title, author, edition, condition, price, isFree, description, ownerPhone }) {
   const user = currentUser();
   if (!user) throw new Error('You must be logged in to publish a book.');
 
@@ -34,6 +35,7 @@ export async function addBook({ title, author, edition, condition, price, isFree
     ownerUid: user.uid,
     ownerName: user.displayName || user.email,
     ownerEmail: user.email || '',
+    ownerPhone: ownerPhone || '', // MODIFIED: Store the owner's phone
     createdAt: serverTimestamp(),
     available: true, // default available
   };

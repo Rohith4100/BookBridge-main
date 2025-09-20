@@ -39,6 +39,7 @@
           <label>Title <input type="text" id="title" required /></label>
           <label>Author <input type="text" id="author" required /></label>
         </div>
+        <label>Contact Number (Required for exchange) <input type="tel" id="ownerPhone" required placeholder="e.g., +91 9876543210" /></label>
         <div class="grid-3">
           <label>Edition <input type="text" id="edition" placeholder="e.g., 3rd" /></label>
           <label>Condition
@@ -90,6 +91,8 @@
         price: Number(qs('#price').value || 0),
         isFree: qs('#isFree').checked,
         description: qs('#description').value.trim(),
+        // MODIFIED: Added ownerPhone to payload
+        ownerPhone: qs('#ownerPhone').value.trim(),
       };
 
       status.textContent = 'Saving...';

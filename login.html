@@ -44,7 +44,7 @@
       display: none;
     }
 
-    /* 🔔 Notification badge (same as other pages) */
+    /* 🔔 Notification badge */
     .notif-badge {
       position: absolute;
       top: -6px;
@@ -67,11 +67,18 @@
     }
     .notif-wrapper { position: relative; display: inline-block; }
     .notif-badge:empty { display: none !important; }
+
+    /* 👁 password toggle button */
+    .toggle-pass {
+      background: none;
+      border: none;
+      cursor: pointer;
+      margin-left: 6px;
+    }
   </style>
 </head>
 
 <body>
-  <!-- ✅ Unified Navbar -->
   <header class="navbar">
     <div class="brand">BookBridge</div>
     <nav class="nav-buttons">
@@ -100,60 +107,101 @@
 
       <!-- Login Form -->
       <form id="loginForm" class="auth-form active">
-        <label>Email <input type="email" id="loginEmail" required /></label>
-        <label>Password <input type="password" id="loginPassword" required /></label>
+        <label for="loginEmail">Email 
+          <input type="email" id="loginEmail" required />
+        </label>
+        <label for="loginPassword">Password 
+          <input type="password" id="loginPassword" required />
+          <button type="button" class="toggle-pass" onclick="togglePassword('loginPassword')">👁</button>
+        </label>
         <button class="btn-full" type="submit">Login</button>
         <p><a href="#" id="resetLink">Forgot password?</a></p>
       </form>
 
       <!-- Signup Form -->
       <form id="signupForm" class="auth-form">
-        <label>Name <input type="text" id="signupName" required /></label>
-        <label>Email <input type="email" id="signupEmail" required /></label>
-        <label>Password <input type="password" id="signupPassword" required /></label>
+        <label for="signupName">Name 
+          <input type="text" id="signupName" required />
+        </label>
+        <label for="signupEmail">Email 
+          <input type="email" id="signupEmail" required />
+        </label>
+        <label for="signupPhone">Contact Number (Optional) 
+          <input type="tel" id="signupPhone" placeholder="e.g., +91 9876543210" />
+        </label>
+        <label for="signupPassword">Password 
+          <input type="password" id="signupPassword" required />
+          <button type="button" class="toggle-pass" onclick="togglePassword('signupPassword')">👁</button>
+        </label>
         <button class="btn-full" type="submit">Create Account</button>
       </form>
 
-      <!-- Reset -->
+      <!-- Reset Row -->
       <div id="resetRow" class="hidden">
-        <label>Email for reset <input type="email" id="resetEmail" /></label>
+        <label for="resetEmail">Email for reset 
+          <input type="email" id="resetEmail" />
+        </label>
         <button class="btn-full" id="resetBtn">Send Reset Link</button>
       </div>
 
+      <!-- Google Auth -->
       <button class="btn-full" id="googleBtn">Sign in with Google</button>
 
-      <div id="errorBox"></div>
-      <div id="toast" class="toast"></div>
+      <!-- Messages -->
+      <div id="errorBox" aria-live="polite"></div>
+      <div id="toast" class="toast" aria-live="polite"></div>
       <p id="userBox" class="muted"></p>
     </section>
   </main>
 
-  <!-- Tab/Reset Switching -->
   <script>
     const tabs = document.querySelectorAll(".tab");
     const forms = document.querySelectorAll(".auth-form");
     const resetRow = document.getElementById("resetRow");
     const resetLink = document.getElementById("resetLink");
+    const errorBox = document.getElementById("errorBox");
 
+    // Switch tabs
     tabs.forEach(tab => {
       tab.addEventListener("click", () => {
         resetRow.classList.add("hidden");
         tabs.forEach(t => t.classList.remove("active"));
-        forms.forEach(f => f.classList.remove("active"));
+        forms.forEach(f => {
+          f.classList.remove("active");
+          if (f.reset) f.reset();
+        });
+        errorBox.style.display = "none";
+
         tab.classList.add("active");
         document.querySelector(tab.dataset.target).classList.add("active");
       });
     });
 
+    // Reset password link
     resetLink.addEventListener("click", (e) => {
       e.preventDefault();
       forms.forEach(f => f.classList.remove("active"));
       tabs.forEach(t => t.classList.remove("active"));
       resetRow.classList.remove("hidden");
     });
+
+    // Password toggle
+    function togglePassword(id) {
+      const input = document.getElementById(id);
+      input.type = input.type === "password" ? "text" : "password";
+    }
+
+    // Signup validation (example: min password length)
+    document.getElementById("signupForm").addEventListener("submit", e => {
+      const pass = document.getElementById("signupPassword").value;
+      if (pass.length < 6) {
+        e.preventDefault();
+        errorBox.innerText = "Password must be at least 6 characters long";
+        errorBox.style.display = "block";
+      }
+    });
   </script>
 
-  <!-- Login JS -->
   <script type="module" src="js/login-page.js"></script>
 </body>
 </html>

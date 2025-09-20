@@ -69,10 +69,32 @@
     }
     .notif-wrapper { position: relative; display: inline-block; }
     .notif-badge:empty { display: none !important; }
+
+    /* MODIFIED: Custom styles for system notifications */
+    .notification-item.pending {
+        background: rgba(124, 108, 255, 0.15); /* light accent */
+        border-left: 4px solid var(--accent);
+    }
+    .notification-item.accepted {
+        background: rgba(61, 220, 151, 0.15); /* light accent-2 (success) */
+        border-left: 4px solid var(--accent-2);
+    }
+    .notification-item.rejected {
+        background: rgba(255, 108, 108, 0.15); /* light danger */
+        border-left: 4px solid var(--danger);
+    }
+    .notification-item.unread {
+        background: rgba(124, 108, 255, 0.25);
+        border: 1px solid var(--accent);
+    }
+    .notification-item:not(.unread) {
+        border: 1px solid var(--border);
+        opacity: 0.8;
+    }
+    /* END MODIFIED CSS */
   </style>
 </head>
 <body>
-  <!-- Navbar -->
   <header class="navbar">
     <div class="brand">BookBridge</div>
     <nav class="nav-buttons">
@@ -98,12 +120,17 @@
     </div>
 
     <div class="tabs">
-      <div class="tab active" data-target="#myRequestsSection">Requests I Made</div>
+      <div class="tab active" data-target="#systemNotificationsSection">My Notifications</div>
+      <div class="tab" data-target="#myRequestsSection">Requests I Made</div>
       <div class="tab" data-target="#publisherRequestsSection">Requests For My Books</div>
     </div>
 
-    <!-- Requests I Made -->
-    <div id="myRequestsSection" class="notif-section active">
+    <div id="systemNotificationsSection" class="notif-section active">
+      <div id="systemNotificationsBox" class="list-area">Loading...</div>
+      <div class="see-more-row"><button id="seeMoreSystemNotifications" class="btn btn-outline">See More</button></div>
+    </div>
+
+    <div id="myRequestsSection" class="notif-section">
       <div class="filter-row">
         <select id="myRequestsFilter" class="filter-select">
           <option value="all">All</option>
@@ -116,7 +143,6 @@
       <div class="see-more-row"><button id="seeMoreMyRequests" class="btn btn-outline">See More</button></div>
     </div>
 
-    <!-- Requests For My Books -->
     <div id="publisherRequestsSection" class="notif-section">
       <div class="filter-row">
         <select id="publisherRequestsFilter" class="filter-select">
@@ -146,17 +172,23 @@
       getDocs,
       onSnapshot,
       deleteDoc,
-      getDocs as getDocsOnce
+      getDocs as getDocsOnce,
+      limit,
+      orderBy,
+      doc,
+      updateDoc
     } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
 
     // DOM
     const myRequestsBox = document.getElementById('myRequestsBox');
     const publisherRequestsBox = document.getElementById('publisherRequestsBox');
+    const systemNotificationsBox = document.getElementById('systemNotificationsBox');
     const clearBtn = document.getElementById('clearBtn');
     const myRequestsFilter = document.getElementById("myRequestsFilter");
     const publisherRequestsFilter = document.getElementById("publisherRequestsFilter");
     const seeMoreMyRequests = document.getElementById("seeMoreMyRequests");
     const seeMorePublisherRequests = document.getElementById("seeMorePublisherRequests");
+    const seeMoreSystemNotifications = document.getElementById("seeMoreSystemNotifications");
     const loginLink = document.getElementById('loginLink');
     const logoutBtn = document.getElementById('logoutBtn');
     const notifBadge = document.getElementById('notifBadge');
@@ -164,9 +196,11 @@
     // State
     let myLimit = 10;
     let publisherLimit = 10;
+    let systemLimit = 10;
 
     const myRequestsMap = new Map();
     const publisherRequestsMap = new Map();
+    const systemNotificationsMap = new Map();
     const myBookUnsubs = new Map();
     const publisherBookUnsubs = new Map();
 
@@ -176,6 +210,17 @@
       card.className = 'card notification-item';
       card.innerHTML = content;
       return card;
+    }
+
+    // Function to mark a notification as read
+    async function markAsRead(notificationId, userId) {
+        if (!notificationId || !userId) return;
+        try {
+            const notifRef = doc(db, 'notifications', userId, 'items', notificationId);
+            await updateDoc(notifRef, { read: true });
+        } catch (e) {
+            console.error("Failed to mark notification as read:", e);
+        }
     }
 
     // Navbar auth + badge
@@ -220,7 +265,39 @@
       document.querySelector(tab.dataset.target).classList.add('active');
     }));
 
-    // Render My Requests
+    // MODIFIED: Render System Notifications (applies new CSS classes)
+    function renderSystemNotifications(currentUser) {
+        const arr = Array.from(systemNotificationsMap.values()).sort((a, b) => tsToMillis(b.createdAt) - tsToMillis(a.createdAt));
+        systemNotificationsBox.innerHTML = '';
+        let shown = 0;
+        
+        for (const it of arr) {
+            if (shown >= systemLimit) break;
+
+            const card = createCard(`
+                <strong style="color: ${it.read ? 'inherit' : 'var(--accent)'};">${it.message}</strong>
+                <div class="muted">${it.createdAt?.toDate ? it.createdAt.toDate().toLocaleString() : ''}</div>
+            `);
+
+            // Apply style classes based on status and read state
+            let statusClass = it.status || 'info'; // Use info if status is missing
+            card.classList.add(statusClass);
+            if (!it.read) {
+                card.classList.add('unread');
+                card.onclick = () => {
+                    if (currentUser) markAsRead(it.id, currentUser.uid);
+                };
+            }
+            
+            systemNotificationsBox.appendChild(card);
+            shown++;
+        }
+        if (!systemNotificationsBox.hasChildNodes()) systemNotificationsBox.textContent = "No system notifications found.";
+        seeMoreSystemNotifications.style.display = arr.length > systemLimit ? 'block' : 'none';
+    }
+
+
+    // Render My Requests (unchanged)
     function renderMyRequests() {
       const arr = Array.from(myRequestsMap.values()).sort((a,b) => tsToMillis(b.requestedAt) - tsToMillis(a.requestedAt));
       const filter = myRequestsFilter.value;
@@ -242,7 +319,7 @@
       seeMoreMyRequests.style.display = arr.filter(i => filter === 'all' || i.status === filter).length > myLimit ? 'block' : 'none';
     }
 
-    // Render Publisher Requests
+    // Render Publisher Requests (unchanged)
     function renderPublisherRequests(currentUser) {
       const arr = Array.from(publisherRequestsMap.values()).sort((a,b) => tsToMillis(b.requestedAt) - tsToMillis(a.requestedAt));
       const filter = publisherRequestsFilter.value;
@@ -266,7 +343,7 @@
           acceptBtn.onclick = async () => {
             acceptBtn.disabled = rejectBtn.disabled = true;
             try {
-              await updateRequestStatus(it.bookId, it.id, 'accepted', currentUser.email, it.requesterUid, it.bookTitle);
+              await updateRequestStatus(it.bookId, it.id, 'accepted', currentUser.email, it.requesterUid, it.bookTitle, it.ownerPhone);
               showToast('✅ Request accepted','success');
             } catch (e) {
               showToast('Failed: ' + (e.message || e),'error');
@@ -277,7 +354,7 @@
           rejectBtn.onclick = async () => {
             acceptBtn.disabled = rejectBtn.disabled = true;
             try {
-              await updateRequestStatus(it.bookId, it.id, 'rejected', currentUser.email, it.requesterUid, it.bookTitle);
+              await updateRequestStatus(it.bookId, it.id, 'rejected', currentUser.email, it.requesterUid, it.bookTitle, it.ownerPhone);
               showToast('❌ Request rejected','success');
             } catch (e) {
               showToast('Failed: ' + (e.message || e),'error');
@@ -306,7 +383,33 @@
         .replace(/'/g, '&#039;');
     }
 
-    // Listen to my requests
+    // Listen to System Notifications (unchanged)
+    async function listenToSystemNotifications(currentUser) {
+        const notifRef = collection(db, 'notifications', currentUser.uid, 'items');
+        const q = query(notifRef, orderBy("createdAt", "desc"), limit(20)); // Initial limit to 20
+        
+        onSnapshot(q, (snap) => {
+            systemNotificationsMap.clear();
+            snap.forEach(d => {
+                systemNotificationsMap.set(d.id, { id: d.id, ...d.data() });
+            });
+            renderSystemNotifications(currentUser);
+        });
+
+        seeMoreSystemNotifications.addEventListener('click', async () => {
+            systemLimit += 10;
+            const newQ = query(notifRef, orderBy("createdAt", "desc"), limit(systemLimit));
+            const newSnap = await getDocsOnce(newQ);
+            
+            systemNotificationsMap.clear();
+            newSnap.forEach(d => {
+                systemNotificationsMap.set(d.id, { id: d.id, ...d.data() });
+            });
+            renderSystemNotifications(currentUser);
+        });
+    }
+
+    // Listen to my requests (unchanged)
     async function listenToMyRequests(currentUser) {
       myRequestsMap.clear();
       for (const unsub of myBookUnsubs.values()) try { unsub(); } catch {}
@@ -358,7 +461,7 @@
       seeMoreMyRequests.addEventListener('click', () => { myLimit += 10; renderMyRequests(); });
     }
 
-    // Listen to publisher requests
+    // Listen to publisher requests (unchanged)
     async function listenToPublisherRequests(currentUser) {
       publisherRequestsMap.clear();
       for (const unsub of publisherBookUnsubs.values()) try { unsub(); } catch {}
@@ -382,6 +485,7 @@
                   id: r.id,
                   bookId,
                   bookTitle: bookData.title || '(Untitled)',
+                  ownerPhone: bookData.ownerPhone || '', 
                   status: rd.status || 'pending',
                   requestedAt: rd.requestedAt,
                   requesterName: rd.requesterName,
@@ -408,42 +512,6 @@
       seeMorePublisherRequests.addEventListener('click', () => { publisherLimit += 10; renderPublisherRequests(currentUser); });
     }
 
-    // Clear requests
-    async function clearRequestsIHaveMade(user) {
-      try {
-        const cg = collectionGroup(db, 'requests');
-        const q = query(cg, where('requesterUid', '==', user.uid));
-        const snap = await getDocs(q);
-        if (snap.empty) return;
-        await Promise.all(snap.docs.map(d => deleteDoc(d.ref)));
-      } catch (e) {
-        const booksRef = collection(db, 'books');
-        const booksSnap = await getDocsOnce(booksRef);
-        const deletions = [];
-        for (const bookDoc of booksSnap.docs) {
-          const reqRef = collection(db, 'books', bookDoc.id, 'requests');
-          const reqSnap = await getDocsOnce(reqRef);
-          for (const r of reqSnap.docs) {
-            const rd = r.data();
-            if (rd.requesterUid === user.uid) deletions.push(deleteDoc(r.ref));
-          }
-        }
-        if (deletions.length) await Promise.all(deletions);
-      }
-    }
-
-    async function clearRequestsForMyBooks(user) {
-      const myBooksQ = query(collection(db, 'books'), where('ownerUid', '==', user.uid));
-      const myBooksSnap = await getDocsOnce(myBooksQ);
-      const deletions = [];
-      for (const bookDoc of myBooksSnap.docs) {
-        const reqRef = collection(db, 'books', bookDoc.id, 'requests');
-        const reqSnap = await getDocsOnce(reqRef);
-        for (const r of reqSnap.docs) deletions.push(deleteDoc(r.ref));
-      }
-      if (deletions.length) await Promise.all(deletions);
-    }
-
     // Clear button
     clearBtn.onclick = async () => {
       let user;
@@ -454,26 +522,72 @@
         return;
       }
 
-      const active = document.querySelector('.tab.active')?.dataset?.target || '#myRequestsSection';
+      const active = document.querySelector('.tab.active')?.dataset?.target || '#publisherRequestsSection';
+      let confirmMessage = '';
+      let clearFunction = null;
 
-      if (active === '#myRequestsSection') {
-        if (!confirm('Clear all requests you made? This will delete those request documents.')) return;
-        try {
-          await clearRequestsIHaveMade(user);
+      if (active === '#systemNotificationsSection') {
+          confirmMessage = 'Clear all system notifications?';
+          clearFunction = async (u) => {
+              const notifRef = collection(db, 'notifications', u.uid, 'items');
+              const snap = await getDocsOnce(notifRef);
+              await Promise.all(snap.docs.map(d => deleteDoc(d.ref)));
+              systemNotificationsMap.clear();
+              renderSystemNotifications(u);
+          };
+          
+      } else if (active === '#myRequestsSection') {
+        confirmMessage = 'Clear all requests you made? This will delete those request documents.';
+        clearFunction = async (u) => {
+          // Use original logic to clear requests I made
+          try {
+            const cg = collectionGroup(db, 'requests');
+            const q = query(cg, where('requesterUid', '==', u.uid));
+            const snap = await getDocs(q);
+            if (snap.empty) return;
+            await Promise.all(snap.docs.map(d => deleteDoc(d.ref)));
+          } catch (e) {
+            const booksRef = collection(db, 'books');
+            const booksSnap = await getDocsOnce(booksRef);
+            const deletions = [];
+            for (const bookDoc of booksSnap.docs) {
+              const reqRef = collection(db, 'books', bookDoc.id, 'requests');
+              const reqSnap = await getDocsOnce(reqRef);
+              for (const r of reqSnap.docs) {
+                const rd = r.data();
+                if (rd.requesterUid === u.uid) deletions.push(deleteDoc(r.ref));
+              }
+            }
+            if (deletions.length) await Promise.all(deletions);
+          }
           myRequestsMap.clear();
           renderMyRequests();
-          showToast('✅ Cleared requests you made', 'success');
-        } catch (e) {
-          console.error(e);
-          showToast('Failed to clear: ' + (e.message || e), 'error');
-        }
+        };
+
       } else if (active === '#publisherRequestsSection') {
-        if (!confirm('Clear all requests for your books?')) return;
-        try {
-          await clearRequestsForMyBooks(user);
+        confirmMessage = 'Clear all requests for your books?';
+        clearFunction = async (u) => {
+          // Use original logic to clear requests for my books
+          const myBooksQ = query(collection(db, 'books'), where('ownerUid', '==', u.uid));
+          const myBooksSnap = await getDocsOnce(myBooksQ);
+          const deletions = [];
+          for (const bookDoc of myBooksSnap.docs) {
+            const reqRef = collection(db, 'books', bookDoc.id, 'requests');
+            const reqSnap = await getDocsOnce(reqRef);
+            for (const r of reqSnap.docs) deletions.push(deleteDoc(r.ref));
+          }
+          if (deletions.length) await Promise.all(deletions);
           publisherRequestsMap.clear();
-          renderPublisherRequests(user);
-          showToast('✅ Cleared requests for your books', 'success');
+          renderPublisherRequests(u);
+        };
+      }
+
+      if (!confirmMessage) return;
+
+      if (confirm(confirmMessage)) {
+        try {
+          await clearFunction(user);
+          showToast('✅ Cleared selected items', 'success');
         } catch (e) {
           console.error(e);
           showToast('Failed to clear: ' + (e.message || e), 'error');
@@ -487,10 +601,12 @@
       try { user = await requireAuth(); } catch { user = null; }
 
       if (!user) {
+        systemNotificationsBox.textContent = 'Please log in to view system notifications.';
         myRequestsBox.textContent = 'Please log in to view requests you made.';
         publisherRequestsBox.textContent = 'Please log in to view requests for your books.';
         return;
       }
+      listenToSystemNotifications(user);
       listenToMyRequests(user);
       listenToPublisherRequests(user);
     });
